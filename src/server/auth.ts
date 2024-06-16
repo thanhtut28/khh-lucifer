@@ -1,6 +1,7 @@
-import authConfig from "./auth.config";
+import { authConfig } from "./auth.config";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { type GetServerSidePropsContext } from "next";
+
 import NextAuth, { type DefaultSession } from "next-auth";
 import { db } from "~/server/db";
 
@@ -30,18 +31,57 @@ declare module "next-auth" {
  *
  * @see https://next-auth.js.org/configuration/options
  */
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
-    session: ({ session, user }) => ({
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    session: ({ session, token }) => ({
       ...session,
       user: {
         ...session.user,
-        id: user.id,
+        id: token.sub,
       },
     }),
+
+    //! this function works as middleware which only works in Edge runtime
+    // authorized: async ({ auth, request: { nextUrl } }) => {
+    //   const isLoggedIn = !!auth?.user;
+    //   const isOnHomePage = nextUrl.pathname === "/";
+
+    //   if (isOnHomePage) {
+    //     if (isLoggedIn) return false;
+    //     return false; // Redirect unauthenticated users to login page
+    //   } else if (isLoggedIn) {
+    //     return Response.redirect(new URL("/", nextUrl));
+    //   }
+
+    //   return false;
+    // },
   },
-  adapter: PrismaAdapter(db),
+
+  pages: {
+    signIn: "/login",
+  },
+
+  debug: true,
+
+  logger: {
+    error(code, ...message) {
+      console.error(code, message);
+    },
+    warn(code, ...message) {
+      console.warn(code, message);
+    },
+    debug(code, ...message) {
+      console.debug(code, message);
+    },
+  },
 });
 
 /**

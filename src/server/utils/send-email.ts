@@ -5,11 +5,11 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export async function sendEmail(email: string, otpCode: string) {
   try {
     const data = await resend.emails.send({
-      from: "Kaung Hein Htet <lucifer@goldsilvercentral.xyz>",
-      to: ["kaungheinhtetutycc@gmail.com"],
-      subject: "Verify with OTP",
+      from: "Midas <midas@goldsilvercentral.xyz>",
+      to: email,
+      subject: "OTP Verification",
       // text field for typesafety
-      text: `Log in with the otp code provided: ${otpCode}`,
+      text: `Thanks for choosing Midas. Your OTP code is ${otpCode}.`,
     });
 
     return Response.json(data);

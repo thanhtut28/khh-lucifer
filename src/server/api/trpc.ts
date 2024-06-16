@@ -10,11 +10,9 @@
 import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
-import { type CreateNextContextOptions } from "@trpc/server/adapters/next";
 import { type Session } from "next-auth";
 
 import { db } from "~/server/db";
-import { auth } from "../auth";
 
 /**
  * 1. CONTEXT
@@ -99,6 +97,14 @@ export const createCallerFactory = t.createCallerFactory;
  * @see https://trpc.io/docs/router
  */
 export const createTRPCRouter = t.router;
+
+/**
+ * Merging routers into a single flat pattern
+ * @link https://trpc.io/docs/v11/merging-routers
+ * (currently not used)
+ */
+
+export const mergeRouters = t.mergeRouters;
 
 /**
  * Public (unauthenticated) procedure

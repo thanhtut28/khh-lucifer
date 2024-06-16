@@ -1,67 +1,75 @@
-/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { type NextAuthConfig } from "next-auth";
-import Resend from "next-auth/providers/resend";
-import Credentials from "next-auth/providers/credentials";
-import signInSchema from "~/validator/signInSchema";
-import bcrypt from "bcrypt-ts";
-import { ZodError } from "zod";
+import Credentials, {
+  type CredentialInput,
+  type CredentialsConfig,
+} from "next-auth/providers/credentials";
+import Github from "next-auth/providers/github";
 import { db } from "./db";
-import { User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
+import { retriveNameFromEmail } from "~/lib/utils";
+import { isWithinExpirationDate } from "oslo";
 
-export default {
+type Provider =
+  | CredentialsConfig<Record<string, CredentialInput>>
+  | (() => CredentialsConfig<Record<string, CredentialInput>>);
+
+export const authConfig = {
   providers: [
-    // Resend({
-    //   apiKey: process.env.RESEND_API_KEY,
-    //   from: "Kaung Hein Htet <lucifer@goldsilvercentral.xyz>",
-    //   sendVerificationRequest({
-    //     identifier: email,
-    //     url,
-    //     provider: { server, from },
-    //   }) {
-    //     // your function
-    //     console.log("email sent", email, url, server, from);
-    //   },
-    // }),
+    Github,
     Credentials({
-      // You can specify which fields should be submitted, by adding keys to the `credentials` object.
-      // e.g. domain, username, password, 2FA token, etc.
+      name: "OTP",
       credentials: {
-        email: {},
-        password: {},
+        email: { label: "email", type: "email" },
+        otp: { label: "OTP", type: "text" },
       },
       authorize: async (credentials) => {
-        try {
-          const { email, password } =
-            await signInSchema.parseAsync(credentials);
+        const { email, otp } = credentials;
 
-          const user = await db.user.findUnique({
-            where: { email },
+        const otpRecord = await db.otp.findFirst({
+          where: {
+            code: otp as string,
+          },
+        });
+
+        if (!otpRecord) {
+          throw new Error("Invalid OTP");
+        }
+
+        if (!isWithinExpirationDate(otpRecord.expiresAt)) {
+          throw new Error("OTP expired");
+        }
+
+        await db.otp.delete({
+          where: {
+            id: otpRecord.id,
+          },
+        });
+
+        const user = await db.user.findUnique({
+          where: { email: email as string },
+        });
+
+        if (!user) {
+          const newUser = await db.user.create({
+            data: { email: email as string },
           });
 
-          if (!user) {
-            throw new Error("User not found.");
-          }
-
-          // logic to salt and hash password
-          const isSamePassword = await bcrypt.compare(password, user.password);
-
-          // logic to verify if user exists
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
-          // return json object with the user data
-          if (!isSamePassword) {
-            throw new Error("Incorrect Password");
-          }
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
-          return user as any;
-        } catch (error) {
-          if (error instanceof ZodError) {
-            // Return `null` to indicate that the credentials are invalid
-            return null;
-          }
+          return {
+            id: newUser.id,
+            email: newUser.email,
+            name: retriveNameFromEmail(newUser.email),
+          } as User;
         }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: retriveNameFromEmail(user.email),
+        } as User;
       },
     }),
+
     /**
      * ...add more providers here.
      *

@@ -1,43 +1,95 @@
-import { hash } from "bcrypt-ts";
-import { TimeSpan, createDate, isWithinExpirationDate } from "oslo";
+import { TimeSpan, createDate } from "oslo";
 import { alphabet, generateRandomString } from "oslo/crypto";
 import { z } from "zod";
-import { isRedirectError } from "next/dist/client/components/redirect";
 
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "~/server/api/trpc";
 import { signIn } from "~/server/auth";
 import { sendEmail } from "~/server/utils/send-email";
-import signInSchema from "~/validator/signInSchema";
 
 export const userRouter = createTRPCRouter({
-  register: publicProcedure
-    .input(z.object({ email: z.string().email(), password: z.string().min(2) }))
-    .mutation(async ({ ctx, input }) => {
-      // simulate a slow db call
-      // await new Promise((resolve) => setTimeout(resolve, 1000));
+  sendOtp: publicProcedure
+    .input(
+      z.object({
+        email: z
+          .string({ required_error: "Email is required" })
+          .email("Invalid Email"),
+      }),
+    )
+    .mutation(async ({ input: { email }, ctx }): Promise<boolean> => {
+      const code = generateRandomString(6, alphabet("0-9", "A-Z"));
 
-      const hashedPassword = await hash(input.password, 10);
+      try {
+        await ctx.db.otp.create({
+          data: {
+            code,
+            email,
+            expiresAt: createDate(new TimeSpan(1, "m")),
+          },
+        });
 
-      return ctx.db.user.create({
-        data: {
-          ...input,
-          password: hashedPassword,
-        },
-      });
+        await sendEmail(email, code);
+        return true;
+      } catch (e) {
+        throw e;
+      }
     }),
 
-  login: publicProcedure
-    .input(signInSchema)
+  //! this procedure is not used currently
+  verifyEmail: publicProcedure
+    .input(
+      z.object({
+        email: z
+          .string({ required_error: "Email is required" })
+          .email("Invalid Email"),
+        otp: z
+          .string({ required_error: "Otp is required" })
+          .min(1, "Otp is required")
+          .length(6, "OTP length must be 6"),
+      }),
+    )
     .mutation(async ({ input }): Promise<boolean> => {
       if (!input.email) {
         return false;
       }
 
-      await signIn("credentials",  input);
+      await signIn("credentials", {
+        ...input,
+        redirect: false,
+      });
 
       return true;
     }),
 
+  //* mutation to test context session
+  updateEmail: protectedProcedure
+    .input(
+      z.object({
+        email: z
+          .string({ required_error: "Email is required" })
+          .email("Invalid Email"),
+      }),
+    )
+    .mutation(async ({ input, ctx }): Promise<boolean> => {
+      if (!ctx.session.user) {
+        throw new Error("Not Authroized");
+      }
+
+      await ctx.db.user.update({
+        where: { id: ctx.session.user.id },
+        data: { email: input.email },
+      });
+
+      return true;
+    }),
+
+  //* query to test protected query
+  getSecretMessage: protectedProcedure.query(({ ctx }) => {
+    return `Your id is ${ctx.session?.user.id}`;
+  }),
   // login: publicProcedure
   //   .input(z.object({ email: z.string().email(), password: z.string().min(2) }))
   //   .mutation(async ({ ctx, input: { email, password } }): Promise<boolean> => {

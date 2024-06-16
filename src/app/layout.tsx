@@ -4,6 +4,7 @@ import { Inter as FontSans } from "next/font/google";
 
 import { TRPCReactProvider } from "~/trpc/react";
 import { cn } from "~/lib/utils";
+import { SessionProvider } from "next-auth/react";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -25,14 +26,16 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
-          "bg-background min-h-screen font-sans antialiased",
+          "min-h-screen bg-background font-sans antialiased",
           fontSans.variable,
         )}
       >
         <TRPCReactProvider>
-          <main className="flex min-h-screen flex-col items-center justify-center">
-            {children}
-          </main>
+          <SessionProvider>
+            <main className="flex min-h-screen flex-col items-center justify-center">
+              {children}
+            </main>
+          </SessionProvider>
         </TRPCReactProvider>
       </body>
     </html>
